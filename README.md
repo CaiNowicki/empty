@@ -18,3 +18,7 @@ A bare-bones Android architecture skeleton for a habit-delay game loop.
 - `domain`: reward/points calculation logic.
 - `data/repo`: repository interface and in-memory MVP implementation.
 - `ui`: screen state, view model, and Compose screen skeleton.
+
+## UML
+
+- Updated class diagram: `docs/updated-uml-class-diagram.md`
