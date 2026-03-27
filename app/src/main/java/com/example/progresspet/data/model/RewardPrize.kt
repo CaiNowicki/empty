@@ -1,7 +1,8 @@
 package com.example.progresspet.data.model
 
-data class RewardTier(
+data class RewardPrize(
     val id: String,
+    val tierId: String,
     val label: String,
-    val unlockMinutesRequired: Long,
+    val pointCost: Int,
 )

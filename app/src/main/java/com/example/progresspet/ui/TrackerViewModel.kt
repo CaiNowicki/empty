@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.progresspet.data.repo.TrackerRepository
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,25 +22,43 @@ class TrackerViewModel(
 
     private val nowTick = MutableStateFlow(Instant.now())
     private val noteDraft = MutableStateFlow("")
+    private val confirmLastUseAccurate = MutableStateFlow(false)
+    private val manualTimestampDraft = MutableStateFlow("") // ISO local datetime, e.g. 2026-03-27T10:30
+    private val manualPointsDraft = MutableStateFlow("0")
 
     val uiState: StateFlow<TrackerUiState> = combine(
         repository.useLogs,
         repository.currentStreakPoints,
         repository.lifetimePoints,
+        repository.bankedPoints,
         repository.petState,
+        repository.rewardTiers,
+        repository.rewardPrizes,
         nowTick,
         noteDraft,
-    ) { logs, currentStreak, lifetime, pet, now, draft ->
-        val lastUse = logs.lastOrNull()?.timestamp
+        confirmLastUseAccurate,
+        manualTimestampDraft,
+        manualPointsDraft,
+    ) { logs, currentStreak, lifetime, banked, pet, tiers, prizes, now, draft, confirmAccurate, manualTs, manualPoints ->
+        val lastUse = logs.maxByOrNull { it.timestamp }?.timestamp
         val elapsed = if (lastUse == null) 0 else Duration.between(lastUse, now).toMinutes().coerceAtLeast(0)
+        val preview = repository.buildLapsePreview(now)
         TrackerUiState(
             elapsedMinutesSinceLastUse = elapsed,
             currentStreakPoints = currentStreak,
             lifetimePoints = lifetime,
+            bankedPoints = banked,
             logs = logs,
+            rewardTiers = tiers,
+            rewardPrizes = prizes,
+            unlockedRewardTierIds = pet.unlockedRewardIds,
             lastFeelingNote = logs.lastOrNull()?.feelingNote,
             feelingNoteDraft = draft,
-            unlockedRewardCount = pet.unlockedRewardIds.size,
+            confirmLastUseAccurate = confirmAccurate,
+            lastRecordedUse = preview.lastRecordedUse,
+            projectedPointsOnLapse = preview.pointsToAward,
+            manualTimestampDraft = manualTs,
+            manualPointsAdjustmentDraft = manualPoints,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -59,11 +79,55 @@ class TrackerViewModel(
         noteDraft.value = value
     }
 
+    fun onConfirmLastUseAccurateChanged(value: Boolean) {
+        confirmLastUseAccurate.value = value
+    }
+
+    fun onManualTimestampDraftChanged(value: String) {
+        manualTimestampDraft.value = value
+    }
+
+    fun onManualPointsDraftChanged(value: String) {
+        manualPointsDraft.value = value
+    }
+
     fun onLogLapseClicked() {
         viewModelScope.launch {
-            repository.logLapse(feelingNote = noteDraft.value)
+            repository.logLapse(
+                feelingNote = noteDraft.value,
+                confirmLastUseAccurate = confirmLastUseAccurate.value,
+            )
             noteDraft.update { "" }
+            confirmLastUseAccurate.value = false
             nowTick.value = Instant.now()
         }
+    }
+
+    fun onAddManualLogClicked() {
+        viewModelScope.launch {
+            val timestamp = parseLocalDateTimeOrNull(manualTimestampDraft.value) ?: return@launch
+            val points = manualPointsDraft.value.toIntOrNull() ?: 0
+            repository.addManualLog(
+                timestamp = timestamp,
+                feelingNote = noteDraft.value,
+                pointAdjustment = points,
+            )
+            manualTimestampDraft.value = ""
+            manualPointsDraft.value = "0"
+            noteDraft.value = ""
+            nowTick.value = Instant.now()
+        }
+    }
+
+    fun onSpendPrizeClicked(prizeId: String) {
+        viewModelScope.launch {
+            repository.spendPoints(prizeId)
+        }
+    }
+
+    private fun parseLocalDateTimeOrNull(value: String): Instant? {
+        return runCatching {
+            LocalDateTime.parse(value).toInstant(ZoneOffset.UTC)
+        }.getOrNull()
     }
 }

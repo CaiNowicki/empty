@@ -2,13 +2,16 @@ package com.example.progresspet.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -16,7 +19,12 @@ import androidx.compose.ui.unit.dp
 fun TrackerScreen(
     state: TrackerUiState,
     onNoteChanged: (String) -> Unit,
+    onConfirmLastUseAccurateChanged: (Boolean) -> Unit,
+    onManualTimestampDraftChanged: (String) -> Unit,
+    onManualPointsDraftChanged: (String) -> Unit,
     onLogLapseClick: () -> Unit,
+    onAddManualLogClick: () -> Unit,
+    onSpendPrizeClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -24,16 +32,25 @@ fun TrackerScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Time since last lapse: ${state.elapsedMinutesSinceLastUse} min", style = MaterialTheme.typography.titleMedium)
+        Text("Projected points if you lapse now: ${state.projectedPointsOnLapse}")
         Text("Current streak points: ${state.currentStreakPoints}")
-        Text("Lifetime points: ${state.lifetimePoints}")
-        Text("Unlocked rewards: ${state.unlockedRewardCount}")
+        Text("Banked points (spendable): ${state.bankedPoints}")
+        Text("Lifetime points (historical): ${state.lifetimePoints}")
+        Text("Last recorded use: ${state.lastRecordedUse ?: "none"}")
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.confirmLastUseAccurate,
+                onCheckedChange = onConfirmLastUseAccurateChanged,
+            )
+            Text("Last recorded use is accurate")
+        }
 
         OutlinedTextField(
             value = state.feelingNoteDraft,
             onValueChange = onNoteChanged,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Optional feeling note") },
-            supportingText = { Text("Track how you felt when you indulged.") },
             minLines = 2,
         )
 
@@ -41,8 +58,34 @@ fun TrackerScreen(
             Text("I indulged")
         }
 
-        state.lastFeelingNote?.let { lastNote ->
-            Text("Last note: $lastNote", style = MaterialTheme.typography.bodyMedium)
+        Text("Manual log entry (UTC LocalDateTime, ex: 2026-03-27T10:30)")
+        OutlinedTextField(
+            value = state.manualTimestampDraft,
+            onValueChange = onManualTimestampDraftChanged,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Past lapse timestamp") },
+        )
+        OutlinedTextField(
+            value = state.manualPointsAdjustmentDraft,
+            onValueChange = onManualPointsDraftChanged,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Manual points adjustment (can be negative)") },
+        )
+        Button(onClick = onAddManualLogClick, modifier = Modifier.fillMaxWidth()) {
+            Text("Add manual lapse")
+        }
+
+        Text("Unlocked tiers: ${state.unlockedRewardTierIds.joinToString().ifBlank { "none" }}")
+        state.rewardPrizes.forEach { prize ->
+            val unlocked = prize.tierId in state.unlockedRewardTierIds
+            val canBuy = unlocked && state.bankedPoints >= prize.pointCost
+            Button(
+                onClick = { onSpendPrizeClick(prize.id) },
+                enabled = canBuy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Buy ${prize.label} (${prize.pointCost})")
+            }
         }
     }
 }
